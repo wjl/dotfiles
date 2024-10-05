@@ -1,0 +1,88 @@
+#!/bin/sh -eu
+#
+# Dotfiles - manage configuration "dot" files with Git.
+# by Wesley J. Landaker <wjl@icecavern.net>
+#
+# This work is marked with CC0 1.0. To view a copy of this license, visit
+# https://creativecommons.org/publicdomain/zero/1.0/
+
+dotfiles_version="1.0.0"
+dotfiles_repo="${XDG_DATA_HOME:-$HOME/.local/share}/dotfiles/dotfiles.git"
+dotfiles_setup_dir="${XDG_CONFIG_HOME:-$HOME/.config}/dotfiles/setup"
+
+dotfiles() {
+
+	command="${1:-help}"; if [ $# -gt 0 ]; then shift; fi
+	case "$command" in
+		help|--help|-h)
+			cat <<-END
+			Dotfiles version $dotfiles_version
+			by Wesley J. Landaker
+
+			Usage: dotfiles <command> ...
+
+			Manage configuration "dot" files with Git.
+
+			Commands:
+			  help          -- show this help message
+			  init          -- initialize a new dotfiles repository
+			  clone [repo]  -- clone an existing dotfiles repository
+			  setup         -- run or re-run user setup scripts
+			  git           -- run a Git command in dotfiles context
+			  *             -- anything else is passed through to Git
+
+			Your files:
+			  Git Repository: $dotfiles_repo
+			  Setup Scripts : $dotfiles_setup_dir
+END
+		;;
+		version|--version|-v)
+			cat <<-END
+			Dotfiles version $dotfiles_version
+			by Wesley J. Landaker
+END
+		;;
+		init)
+			printf 'dotfiles: git init %s\n' "$dotfiles_repo"
+			git init --bare "$dotfiles_repo"
+			dotfiles config --local status.showUntrackedFiles no
+		;;
+		clone)
+			printf 'dotfiles: git clone %s\n' "$1 $dotfiles_repo"
+			git clone --recursive --bare "$1" "$dotfiles_repo"
+			dotfiles config --local status.showUntrackedFiles no
+			dotfiles checkout
+			dotfiles setup
+		;;
+		setup)
+			printf 'dotfiles: running setup scripts\n'
+			run_parts() {
+				local dir="$1"
+				for part in "$dir"/*; do
+					if [ "$part" = "$dir/*" ]; then break; fi
+					printf '[%s]\n' "$part"
+					if [ -d "$part" ]; then
+						run_parts "$part"
+					else
+						chmod u+x "$part"
+						"$part"
+					fi
+				done
+			}
+
+			mkdir -p "$dotfiles_setup_dir"
+			cd       "$dotfiles_setup_dir"
+			run_parts .
+		;;
+		git)
+			printf 'dotfiles: git %s\n' "$*"
+			exec git --git-dir="$dotfiles_repo" --work-tree="$HOME" "$@"
+		;;
+		*)
+			dotfiles git "$command" "$@"
+		;;
+	esac
+
+}
+
+dotfiles "$@"
